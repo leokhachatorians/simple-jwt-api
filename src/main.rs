@@ -1,14 +1,12 @@
 #[macro_use]
 extern crate rocket;
 
-//use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::{Duration, Utc};
 
 use rocket::http::Status;
 
 use jsonwebtoken::{
-    decode, encode, errors::Error, errors::ErrorKind, errors::Result, DecodingKey, EncodingKey,
-    Header, TokenData, Validation,
+    decode, encode, errors::ErrorKind, DecodingKey, EncodingKey, Header, TokenData, Validation,
 };
 use rocket::http::ContentType;
 use rocket::request::{FromRequest, Outcome, Request};
@@ -44,48 +42,15 @@ impl<'a> Responder<'a, 'static> for ApiResponse {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct ApiKey<'a>(&'a str);
-
-#[derive(Debug, Deserialize, Serialize)]
 struct Token {
     claims: Claims,
     header: Header,
 }
 
 #[derive(Debug)]
-pub enum ApiKeyError {
-    Invalid,
-    Missing,
-}
-
-#[derive(Debug)]
 enum JwtError {
     Invalid,
     Missing,
-}
-
-#[rocket::async_trait]
-impl<'a> FromRequest<'a> for ApiKey<'a> {
-    type Error = ApiKeyError;
-
-    async fn from_request(req: &'a Request<'_>) -> Outcome<Self, Self::Error> {
-        fn is_valid(key: &str) -> bool {
-            key == "valid_fart_key"
-        }
-        match req.headers().get_one("x-fart-key") {
-            None => {
-                //local_cache!(req, "Mising API Key");
-                //req.local_cache(|| json!({"message": "Missing API Key"}));
-                req.local_cache(|| "Missing API Key");
-                Outcome::Failure((Status::Unauthorized, ApiKeyError::Invalid))
-            }
-            Some(key) if is_valid(key) => Outcome::Success(ApiKey(key)),
-            Some(_) => {
-                req.local_cache(|| "Invalid API Key");
-                Outcome::Failure((Status::Unauthorized, ApiKeyError::Missing))
-            }
-        }
-    }
 }
 
 #[rocket::async_trait]
@@ -134,20 +99,12 @@ fn fetch_error_message(err: &ErrorKind) -> String {
     message.to_owned()
 }
 
-fn decode_token(token: &str) -> Result<TokenData<Claims>> {
+fn decode_token(token: &str) -> jsonwebtoken::errors::Result<TokenData<Claims>> {
     decode::<Claims>(
         &token,
         &DecodingKey::from_secret("secret".as_ref()),
         &Validation::default(),
     )
-}
-
-#[get("/sensitive")]
-fn sensitive(_key: ApiKey) -> ApiResponse {
-    ApiResponse {
-        message: json!({"message": "your in!"}),
-        status: Status::Ok,
-    }
 }
 
 #[get("/token-required")]
@@ -161,12 +118,7 @@ fn token_required(_token: Token) -> ApiResponse {
 #[get("/token")]
 fn token() -> ApiResponse {
     let now = Utc::now();
-    let exp = now.checked_add_signed(Duration::seconds(1500)).unwrap();
-
-    //ApiResponse {
-    //    message: json!({"message": "your in!"}),
-    //    status: Status::Ok,
-    //}
+    let exp = now.checked_add_signed(Duration::seconds(900)).unwrap();
 
     let claims = Claims {
         sub: "leo".to_string(),
@@ -180,15 +132,6 @@ fn token() -> ApiResponse {
     )
     .unwrap();
 
-    let decoded = decode::<Claims>(
-        &token,
-        &DecodingKey::from_secret("secret".as_ref()),
-        &Validation::default(),
-    )
-    .unwrap();
-
-    println!("{:?}", decoded);
-
     ApiResponse {
         message: json!({ "access_token": token }),
         status: Status::Ok,
@@ -198,6 +141,6 @@ fn token() -> ApiResponse {
 #[launch]
 fn rocket() -> _ {
     rocket::build()
-        .mount("/", routes![sensitive, token, token_required])
+        .mount("/", routes![token, token_required])
         .register("/", catchers![unauthorized_catcher])
 }
